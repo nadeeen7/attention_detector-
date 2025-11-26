@@ -1,1 +1,2 @@
-web: gunicorn attention_detector:app
+web: gunicorn dashboard.app:app
+

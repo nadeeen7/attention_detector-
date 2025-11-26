@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Attention Dashboard</title>
+    <style>
+        body { background:#111; color:white; font-family:Arial; margin:0; }
+        .container { display:flex; height:100vh; }
+
+        .left { width:65%; padding:15px; }
+        .right { width:35%; padding:20px; background:#000; }
+
+        .circle {
+            width:200px; height:200px;
+            border-radius:50%;
+            border:12px solid #00ff88;
+            display:flex; align-items:center; justify-content:center;
+            font-size:45px; margin:auto;
+            transition: border-color 0.3s;
+        }
+
+        .info { margin-top:20px; font-size:22px; }
+        .summary { margin-top:40px; border-top:1px solid #333; padding-top:20px; }
+
+        .attentive-color { color:#00ff88; border-color:#00ff88 !important; }
+        .inattentive-color { color:#ff3333; border-color:#ff3333 !important; }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="left">
+        <img src="/video_feed" style="width:100%; border-radius:12px;">
+        <h1 id="status" style="margin-top:20px;">Status: Loading...</h1>
+    </div>
+
+    <div class="right">
+        <div class="circle" id="score">--</div>
+
+        <div class="info">
+            <p id="ear">EAR: --</p>
+            <p id="head">Head: --</p>
+            <p id="phone">Phone: --</p>
+        </div>
+
+        <div class="summary">
+            <h3>Session Summary</h3>
+            <p>Total Time: <span id="total-time">0</span> seconds</p>
+            <p>Attention Percentage: <span id="att-percent">0%</span></p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+/* --------------------------
+   SESSION VARIABLES
+--------------------------- */
+let totalSeconds = 0;
+let attentiveSeconds = 0;
+let avgEAREntries = [];
+let headCenterCount = 0;
+let phoneCount = 0;
+
+/* --------------------------
+   TIMER
+--------------------------- */
+setInterval(() => {
+    totalSeconds++;
+    document.getElementById("total-time").innerText = totalSeconds;
+}, 1000);
+
+
+/* --------------------------
+   LIVE DATA (500ms)
+--------------------------- */
+function updateLiveData() {
+    fetch("/live_data")
+    .then(res => res.json())
+    .then(data => {
+
+        let statusText = data.status || "--";
+        let isAttentive = statusText === "ATTENTIVE";
+
+        document.getElementById("status").innerText = "Status: " + statusText;
+        document.getElementById("status").className = isAttentive ? "attentive-color" : "inattentive-color";
+
+        let circle = document.getElementById("score");
+        circle.className = "circle " + (isAttentive ? "attentive-color" : "inattentive-color");
+        circle.innerText = data.score || "--";
+
+        document.getElementById("ear").innerText = "EAR: " + (data.ear ? data.ear.toFixed(3) : "--");
+        document.getElementById("head").innerText = "Head: " + (data.head || "--");
+        document.getElementById("phone").innerText = "Phone: " + (data.phone || "--");
+
+        // TRACK SUMMARY DATA
+        if (isAttentive) attentiveSeconds++;
+        if (data.ear) avgEAREntries.push(data.ear);
+        if (data.head === "Center") headCenterCount++;
+        if (data.phone === "YES") phoneCount++;
+    });
+}
+
+setInterval(updateLiveData, 500);
+
+
+/* --------------------------
+   SEND SUMMARY TO BACKEND
+--------------------------- */
+function sendSummaryToBackend() {
+
+    let attentionPercent = ((attentiveSeconds / totalSeconds) * 100).toFixed(2);
+    document.getElementById("att-percent").innerText = attentionPercent + "%";
+
+    let avgEAR = avgEAREntries.length > 0
+                 ? (avgEAREntries.reduce((a,b)=>a+b,0) / avgEAREntries.length).toFixed(3)
+                 : 0;
+
+    let headCenterPercent = ((headCenterCount / totalSeconds) * 100).toFixed(2);
+
+    fetch("/end_session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            total_time: totalSeconds,
+            attention: attentionPercent,
+            avgEAR: avgEAR,
+            headCenterPercent: headCenterPercent,
+            phoneCount: phoneCount
+        })
+    });
+}
+
+window.addEventListener("beforeunload", sendSummaryToBackend);
+</script>
+
+</body>
+</html>
